@@ -63,7 +63,7 @@
 #define MAX_DATA     1000
 #define DEBUG        0
 
-// TODO: Optimize the return sequence so that there's only ONE send_response() call per command.
+// DONE: Optimize the return sequence so that there's only ONE send_response() call per command.
 //       Implemented this for get_vfo_info but no others, yet...
 
 static int client_sockets[MAX_CLIENTS] = {0};
