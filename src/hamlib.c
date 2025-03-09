@@ -930,10 +930,7 @@ static int hamlib_set_freq(int cs, int is_extended, char *argv[], int argc)
     sprintf(cmd, "freq %ld", freq);
     execute_command(cmd);
 
-    if (!is_extended)
-    {
-        add_response(cs, (char *) "RPRT 0\n");
-    }
+    add_response(cs, (char *) "RPRT 0\n");
     flush_response(cs);
     return 0;
 }
@@ -1069,11 +1066,8 @@ static int hamlib_set_mode(int cs, int is_extended, char *argv[], int argc)
     {
         field_set("BW", passband);
     }
-
-    if(is_extended)
-    {
-        add_response(cs, (char *) "RPRT 0\n");
-    }
+// Added support for RPTR 0 older rigs
+    add_response(cs, (char *) "RPRT 0\n");
     flush_response(cs);
 
     return 0;
@@ -1179,10 +1173,8 @@ static int hamlib_set_vfo(int cs, int is_extended, char *argv[], int argc)
         char tmp[5];
         strcpy(tmp, map_vfo_request(argv[0]));
         field_set("VFO", tmp);
-        if (is_extended)
-        {
-            add_response(cs, (char *) "RPRT 0\n");
-        }
+        // Added support for RPTR 0 older rigs
+        add_response(cs, (char *) "RPRT 0\n");
     }
     flush_response(cs);
     return 0;
@@ -1198,7 +1190,7 @@ static int hamlib_get_vfo(int cs, int is_extended, char *argv[], int argc)
     begin_new_response(cs);
     if (is_extended)
     {
-        add_response(cs, (char *) "get_ßvfo:\n");
+        add_response(cs, (char *) "get_vfo:\n");
 
     }
     {
@@ -1237,7 +1229,8 @@ static int hamlib_set_split(int cs, int is_extended, char *argv[], int argc)
     if (is_extended)
     {
         char tmp[128];
-        snprintf(tmp, sizeof(tmp), "set_split_vfo %s %s\n", argv[0], argc == 2 ? argv[1] : "");
+        snprintf(tmp, sizeof(tmp), "set_split_vfo: %s %s\n", argv[0], argc == 2 ? argv[1] : "");
+        snprintf(tmp, sizeof(tmp), "set_split_vfo: %s %s\n", argv[0], argc == 2 ? argv[1] : "");
         add_response(cs, tmp);
     }
 
@@ -1326,7 +1319,7 @@ static int hamlib_set_func(int cs, int is_extended, char *argv[], int argc)
     {
         char tmp[128];
         snprintf(tmp, sizeof(tmp),
-                 "set_func %s %s:\n%s: %s\n", argv[0], argv[1], argv[0], argv[1]);
+                 "set_func: %s %s\n%s: %s\n", argv[0], argv[1], argv[0], argv[1]);
         add_response(cs, tmp);
     }
 
@@ -1419,6 +1412,7 @@ static int hamlib_get_func(int cs, int is_extended, char *argv[], int argc)
             add_response(cs, out_buf);
         }
     }
+    add_response(cs, (char *) "RPRT 0\n");
     flush_response(cs);
     return 0;
 }
@@ -1464,7 +1458,7 @@ static int hamlib_set_level(int cs, int is_extended, char *argv[], int argc)
         hamlib_error_t err = command_set_level(mapped_level_name, val);
         if (err == HAMLIB_OK)
         {
-            if (!is_extended) add_response(cs, (char *) "RPRT 0\n");
+            add_response(cs, (char *) "RPRT 0\n");
         }
         else
         {
@@ -1479,10 +1473,7 @@ static int hamlib_set_level(int cs, int is_extended, char *argv[], int argc)
     else
     {
         /* success with property table */
-        if (!is_extended)
-        {
-            add_response(cs, (char *) "RPRT 0\n");
-        }
+        add_response(cs, (char *) "RPRT 0\n");
     }
     flush_response(cs);
     return 0;
@@ -1547,61 +1538,33 @@ static int hamlib_get_level(int cs, int is_extended, char *argv[], int argc)
     return 0;
 }
 
-void command_tx_control(int client_socket, int s)
-{
-    begin_new_response(client_socket);
-    //printf("tx_control(%d)\n", s);
-    if (s >= 1)
-    {
-        hamlib_tx(1);
-    }
-    if (s == 0)
-    {
-        hamlib_tx(0);
-    }
-    if (s == -1)
-    {
-        char tx_status[100];
-        sdr_request("stat:tx=1", (char *) tx_status);
-        if (!strcmp(tx_status, "ok on"))
-            add_response(client_socket, "1\n");
-        else
-            add_response(client_socket, "0\n");
-        return;
-    }
-    add_response(client_socket, "RPRT 0\n");
-    flush_response(client_socket);
-}
-/*****************************************************************************
- * T, set_ptt 'PTT' (0 or 1)
- * t, get_ptt
- *****************************************************************************/
-
 /*
  * T, set_ptt 'PTT'
  * "Set 'PTT', 0=RX or 1=TX."
  */
 static int hamlib_set_ptt(int cs, int is_extended, char *argv[], int argc)
 {
-    //  printf("[DEBUG] hamlib_set_ptt: argc=%d\n", argc);
     int ptt_val = 1;
-    if (argc > 0) ptt_val = atoi(argv[0]);
+    if (argc > 0)
+        ptt_val = atoi(argv[0]);
+
     begin_new_response(cs);
+
     if (is_extended)
     {
         char tmp[64];
-        snprintf(tmp, sizeof(tmp),
-                 "set_ptt %d:\nPTT: %d\n", ptt_val, ptt_val);
+        snprintf(tmp, sizeof(tmp), "set_ptt %d:\nPTT: %d\n", ptt_val, ptt_val);
         add_response(cs, tmp);
     }
-    {
-        extern void command_tx_control(int client_socket, int s);
-        command_tx_control(cs, ptt_val);
-    }
-    if (is_extended)
-    {
-        add_response(cs, (char *) "RPRT 0\n");
-    }
+
+    // Execute TX control directly:
+    if (ptt_val >= 1)
+        hamlib_tx(1);
+    else
+        hamlib_tx(0);
+
+    // Append standard response
+    add_response(cs, "RPRT 0\n");
     flush_response(cs);
     return 0;
 }
@@ -1612,20 +1575,36 @@ static int hamlib_set_ptt(int cs, int is_extended, char *argv[], int argc)
  */
 static int hamlib_get_ptt(int cs, int is_extended, char *argv[], int argc)
 {
-    //  printf("[DEBUG] hamlib_get_ptt: argc=%d\n", argc);
     begin_new_response(cs);
+
     if (is_extended)
     {
-        add_response(cs, (char *) "get_ptt:\n");
+        add_response(cs, "get_ptt:\n");
     }
+
+    // Query the TX status
+    char tx_status[100];
+    sdr_request("stat:tx=1", tx_status);
+
+    // Check the returned status string and send an appropriately labeled response.
+    if (!strcmp(tx_status, "ok on"))
     {
-        /* your code calls command_tx_control(cs,-1) => returns '0\n' or '1\n' */
-        extern void command_tx_control(int client_socket, int s);
-        command_tx_control(cs, -1);
+        if (is_extended)
+            add_response(cs, "PTT: 1\n");
+        else
+            add_response(cs, "1\n");
     }
+    else
+    {
+        if (is_extended)
+            add_response(cs, "PTT: 0\n");
+        else
+            add_response(cs, "0\n");
+    }
+
     if (is_extended)
     {
-        add_response(cs, (char *) "RPRT 0\n");
+        add_response(cs, "RPRT 0\n");
     }
     flush_response(cs);
     return 0;
@@ -1832,11 +1811,8 @@ static int hamlib_send_cmd_raw(int cs, int is_extended, char *argv[], int argc)
     }
 
     execute_command(combined);
-    if (!is_extended)
-    {
-        add_response(cs, (char *) "RPRT 0\n");
-    }
-
+    // Added support for RPTR 0 older rigs
+    add_response(cs, (char *) "RPRT 0\n");
     flush_response(cs);
     return 0;
 }
@@ -1971,10 +1947,8 @@ static int hamlib_set_lock_mode(int cs, int is_extended, char *argv[], int argc)
     }
     is_locked = strcmp(argv[0], "0") == 0 ? false : true;
     field_set("VFOLK", argv[0]);
-    if (is_extended)
-    {
-        add_response(cs, (char *) "RPRT 0\n");
-    }
+    // Added support for RPTR 0 older rigs
+    add_response(cs, (char *) "RPRT 0\n");
 
     flush_response(cs);
     return 0;
@@ -1986,14 +1960,11 @@ static int hamlib_chk_vfo(int cs, int is_extended, char *argv[], int argc)
     begin_new_response(cs);
     if (is_extended)
     {
-        add_response(cs, (char *) "check_vfo:\n");
+        add_response(cs, (char *) "chk_vfo: 0\n");
     }
-
-    add_response(cs, "0\n");
-    if (is_extended)
-    {
-        add_response(cs, (char *) "RPRT 0\n");
-    }
+    else
+        add_response(cs, "0\n");
+    add_response(cs, (char *) "RPRT 0\n");
     flush_response(cs);
     return 0;
 }
@@ -2216,10 +2187,8 @@ static int hamlib_set_rit(int cs, int is_extended, char *argv[], int argc)
     snprintf(rit, sizeof(rit), "RIT_DELTA %i", rit_val);
     execute_command(rit);
 
-    if (is_extended)
-    {
-        add_response(cs, (char *) "RPRT 0\n");
-    }
+    // Added support for RPTR 0 older rigs
+    add_response(cs, (char *) "RPRT 0\n");
     flush_response(cs);
     return 0;
 }
